@@ -128,7 +128,52 @@ class KnowledgeBase(object):
         printv("Retracting {!r}", 0, verbose, [fact_or_rule])
         ####################################################
         # Student code goes here
-        
+        #has to be a fact or a rule not asserted
+        if isinstance(fact_or_rule, Fact):
+            n = self._get_fact(fact_or_rule)
+        else:
+            n = self._get_rule(fact_or_rule)
+        if isinstance(n, Rule) and n.asserted: return
+        if isinstance(n,Fact):
+            if n.asserted or len(n.supported_by) == 0:
+                for s in n.supported_by:
+                    s[0].supports_facts.remove(n)
+                    s[1].supports_facts.remove(n)
+            if len(n.supported_by) != 0: return
+           
+        if isinstance(n,Rule):
+            if n.asserted: return
+            for s in n.supported_by:
+                s[0].supports_rules.remove(n)
+                s[1].supports_rules.remove(n)
+        if isinstance(n, Fact): self.facts.remove(n)
+        if isinstance(n, Rule): self.rules.remove(n)
+
+        for f in n.supports_facts:
+            for i in f.supported_by:
+                if (i[0] == n):
+                    f.supported_by.remove(i)
+                    self._pass_on_fact(f)
+            if (len(f.supported_by) == 0):
+                self.kb_retract(f)
+        for f in n.supports_rules:
+            for i in f.supported_by:
+                if (i[0] == n):
+                    f.supported_by.remove(i)
+                    self._pass_on_rule(f)
+            if (len(f.supported_by) == 0):
+                self.kb_retract(f)
+
+    def _pass_on_fact(self, fact):
+        for i in range(len(self.facts)):
+            if (self.facts[i] == fact):
+                self.facts[i] = fact
+
+    def _pass_on_rule(self, rule):
+        for i in range(len(self.rules)):
+            if (self.rules[i] == rule):
+                self.rules[i] = rule
+
 
 class InferenceEngine(object):
     def fc_infer(self, fact, rule, kb):
@@ -142,7 +187,53 @@ class InferenceEngine(object):
         Returns:
             Nothing            
         """
-        printv('Attempting to infer from {!r} and {!r} => {!r}', 1, verbose,
+        printv("Attempting to infer from {!r} and {!r} => {!r}", 1, verbose,
             [fact.statement, rule.lhs, rule.rhs])
         ####################################################
         # Student code goes here
+        bindings = match(fact.statement, rule.lhs[0])
+        if bindings:
+            lhs = []
+            for l in rule.lhs: lhs.append(instantiate(l, bindings))
+            if (fact.statement == lhs[0] and len(lhs) > 1): lhs.remove(lhs[0])
+            rhs = instantiate(rule.rhs, bindings)
+
+            newrule = Rule([lhs, rhs], [[fact, rule]])
+            fact.supports_rules.append(newrule)
+            rule.supports_rules.append(newrule)
+            kb.kb_assert(newrule)
+            '''add new fact. The rule is if there is a fact that correspond to
+               every single statement on the left hand side you can make the right hand
+               side a new fact
+            '''
+            if self.newFact(lhs, kb):
+                newFact = Fact(rhs, [[fact, rule]])
+                fact.supports_facts.append(newFact)
+                rule.supports_facts.append(newFact)
+                kb.kb_assert(newFact)
+        
+            printv("Support from {!r} and {!r} => {!r}, {!r}", 1, verbose,
+                   [fact.statement, fact.supports_facts, rule.rhs, rule.supports_facts])
+
+    
+    def newFact(self, lhs, kb):
+        '''See if the kb has facts that correspond to EVERY single statement in lhr of rule
+            
+            Args:
+            lhs: newly generated left hand side: list of statements
+            kb: knowledge base
+            
+            Returns:
+              a boolean tells whether or nor we can generate a new fact
+        '''
+        for l in lhs:
+             b = False
+             for f in kb.facts:
+                 if (f.statement == l): b = True
+             if not(b): return b
+        return True
+
+
+
+
+
